@@ -1,0 +1,74 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ sensor.name }} — Телеметрія{% endblock %}
+
+{% block body %}
+    {% set alert = sensor.isAlert() %}
+    <a href="{{ path('app_sensor_index') }}" class="btn btn-sm btn-outline-secondary mb-3">← Назад до дашборду</a>
+
+    <div class="panel p-4 mb-4 {{ alert ? 'border-danger' : '' }}">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge text-bg-light border text-secondary">{{ sensor.sensorType }}</span>
+                    <span class="badge {{ alert ? 'bg-danger' : (sensor.status == 'online' ? 'bg-success' : 'bg-secondary') }} mono">
+                        {{ alert ? 'ТРИВОГА (ПЕРЕВИЩЕННЯ ПОРОГУ)' : sensor.status|upper }}
+                    </span>
+                </div>
+                <h1 class="h2 fw-bold mb-1">{{ sensor.name }}</h1>
+                <div class="text-muted">
+                    Локація: <strong>{{ sensor.location.name }}</strong>
+                    {% if sensor.location.zone %} · Зона: {{ sensor.location.zone }}{% endif %}
+                </div>
+            </div>
+            <div class="text-md-end">
+                <div class="display-4 fw-bold mono {{ alert ? 'text-danger' : 'text-dark' }}">
+                    {{ sensor.currentValue }} <span class="fs-4 text-muted">{{ sensor.unit }}</span>
+                </div>
+                <div class="text-muted small mono">Оновлено: {{ sensor.updatedAt|date('d.m.Y H:i:s') }}</div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="p-3 bg-light rounded-3 border">
+                    <div class="text-muted small">Поріг спрацювання тривоги</div>
+                    <div class="fs-5 fw-bold mono">
+                        {{ sensor.alertThreshold is not null ? sensor.alertThreshold ~ ' ' ~ sensor.unit : 'Не задано' }}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 bg-light rounded-3 border">
+                    <div class="text-muted small">ID пристрою</div>
+                    <div class="fs-5 fw-bold mono">SENS-{{ '%04d'|format(sensor.id) }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 bg-light rounded-3 border">
+                    <div class="text-muted small">Опис локації</div>
+                    <div class="small mt-1">{{ sensor.location.description ?: 'Без додаткового опису' }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Інші датчики в цій самій локації (демонстрація OneToMany) #}
+    <div class="panel p-4">
+        <h5 class="fw-semibold mb-3">Усі датчики в локації «{{ sensor.location.name }}»</h5>
+        <div class="list-group list-group-flush">
+            {% for sibling in sensor.location.sensors %}
+                <a href="{{ path('app_sensor_show', {id: sibling.id}) }}"
+                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {{ sibling.id == sensor.id ? 'bg-light fw-semibold' : '' }}">
+                    <span>
+                        <span class="led {{ sibling.isAlert() ? 'led-alert' : 'led-' ~ sibling.status }} me-2"></span>
+                        {{ sibling.name }} <span class="text-muted small">({{ sibling.sensorType }})</span>
+                    </span>
+                    <span class="mono {{ sibling.isAlert() ? 'text-danger fw-bold' : '' }}">
+                        {{ sibling.currentValue }} {{ sibling.unit }}
+                    </span>
+                </a>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock %}

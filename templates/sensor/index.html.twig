@@ -1,0 +1,139 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Моніторинг датчиків — IoT Telemetry Hub{% endblock %}
+
+{% block body %}
+    {# KPI-панель телеметрії #}
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="panel p-3">
+                <div class="text-muted small">Усього датчиків</div>
+                <div class="fs-3 fw-bold mono">{{ stats.total }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="panel p-3">
+                <div class="text-muted small d-flex align-items-center gap-2">
+                    <span class="led led-online"></span> Онлайн
+                </div>
+                <div class="fs-3 fw-bold mono text-success">{{ stats.online }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="panel p-3">
+                <div class="text-muted small d-flex align-items-center gap-2">
+                    <span class="led led-offline"></span> Офлайн / ТО
+                </div>
+                <div class="fs-3 fw-bold mono text-secondary">{{ stats.offline }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="panel p-3 {{ stats.alerts > 0 ? 'border-danger' : '' }}">
+                <div class="text-muted small d-flex align-items-center gap-2">
+                    <span class="led {{ stats.alerts > 0 ? 'led-alert' : 'led-online' }}"></span> Активні тривоги
+                </div>
+                <div class="fs-3 fw-bold mono {{ stats.alerts > 0 ? 'text-danger' : 'text-dark' }}">
+                    {{ stats.alerts }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Фільтри (QueryBuilder) #}
+    <form method="get" action="{{ path('app_sensor_index') }}" class="panel p-3 mb-4">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-3">
+                <input type="text" name="q" value="{{ currentQuery }}" class="form-control form-control-sm"
+                       placeholder="Пошук датчика, типу або зони...">
+            </div>
+            <div class="col-md-3">
+                <select name="location" class="form-select form-select-sm">
+                    <option value="">Усі локації</option>
+                    {% for loc in locations %}
+                        <option value="{{ loc.id }}" {{ currentLocation == loc.id ? 'selected' : '' }}>
+                            {{ loc.name }}{{ loc.zone ? ' (' ~ loc.zone ~ ')' : '' }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">Будь-який статус</option>
+                    <option value="online" {{ currentStatus == 'online' ? 'selected' : '' }}>Online</option>
+                    <option value="offline" {{ currentStatus == 'offline' ? 'selected' : '' }}>Offline</option>
+                    <option value="maintenance" {{ currentStatus == 'maintenance' ? 'selected' : '' }}>Maintenance</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" name="alerts" value="1" id="alertsSwitch"
+                           {{ onlyAlerts ? 'checked' : '' }}>
+                    <label class="form-check-label small fw-medium text-danger" for="alertsSwitch">Тільки тривоги</label>
+                </div>
+            </div>
+            <div class="col-md-2 d-flex gap-1">
+                <button type="submit" class="btn btn-sm btn-dark w-100">Фільтр</button>
+                {% if currentQuery or currentLocation or currentStatus or onlyAlerts %}
+                    <a href="{{ path('app_sensor_index') }}" class="btn btn-sm btn-outline-secondary">✕</a>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+
+    {# Сітка датчиків #}
+    {% if sensors is empty %}
+        <div class="panel p-4 text-center text-muted">
+            Датчиків поки немає або за фільтром нічого не знайдено. Додайте їх у <a href="/admin">панелі керування</a>.
+        </div>
+    {% else %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+            {% for sensor in sensors %}
+                {% set alert = sensor.isAlert() %}
+                {% set percent = sensor.alertThreshold ? min(100, max(0, (sensor.currentValue / sensor.alertThreshold) * 100)) : 0 %}
+                <div class="col">
+                    <div class="panel sensor-card h-100 p-3 d-flex flex-column {{ alert ? 'is-alert' : '' }}">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge text-bg-light border text-secondary">{{ sensor.sensorType }}</span>
+                            <span class="small mono d-flex align-items-center gap-1 {{ alert ? 'text-danger fw-bold' : 'text-muted' }}">
+                                <span class="led {{ alert ? 'led-alert' : 'led-' ~ sensor.status }}"></span>
+                                {{ alert ? 'ALERT' : sensor.status|upper }}
+                            </span>
+                        </div>
+
+                        <h5 class="fw-semibold mb-1">{{ sensor.name }}</h5>
+                        <div class="text-muted small mb-3">📍 {{ sensor.location.name }}</div>
+
+                        <div class="my-2">
+                            <span class="display-6 fw-bold mono {{ alert ? 'text-danger' : 'text-dark' }}">
+                                {{ sensor.currentValue }}
+                            </span>
+                            <span class="fs-5 text-muted mono">{{ sensor.unit }}</span>
+                        </div>
+
+                        {% if sensor.alertThreshold is not null %}
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between small text-muted mb-1">
+                                    <span>Поріг тривоги</span>
+                                    <span class="mono">{{ sensor.alertThreshold }} {{ sensor.unit }}</span>
+                                </div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar {{ alert ? 'bg-danger' : (percent > 80 ? 'bg-warning' : 'bg-success') }}"
+                                         style="width: {{ percent|round }}%"></div>
+                                </div>
+                            </div>
+                        {% endif %}
+
+                        <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
+                            <span class="text-muted mono" style="font-size: 0.75rem;">
+                                {{ sensor.updatedAt|date('d.m H:i') }}
+                            </span>
+                            <a href="{{ path('app_sensor_show', {id: sensor.id}) }}" class="btn btn-sm btn-outline-dark">
+                                Телеметрія →
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}

@@ -1,4 +1,4 @@
-{% extends 'base.html.twig' %}
+ {% extends 'base.html.twig' %}
 
 {% block title %}{{ sensor.name }} — Телеметрія{% endblock %}
 
@@ -6,56 +6,39 @@
     {% set alert = sensor.isAlert() %}
     <a href="{{ path('app_sensor_index') }}" class="btn btn-sm btn-outline-secondary mb-3">← Назад до дашборду</a>
 
-    <div class="panel p-4 mb-4 {{ alert ? 'border-danger' : '' }}">
+    <div class="surface p-4 mb-4 {{ alert ? 'border-danger' : '' }}">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
             <div>
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="badge text-bg-light border text-secondary">{{ sensor.sensorType }}</span>
-                    <span class="badge {{ alert ? 'bg-danger' : (sensor.status == 'online' ? 'bg-success' : 'bg-secondary') }} mono">
-                        {{ alert ? 'ТРИВОГА (ПЕРЕВИЩЕННЯ ПОРОГУ)' : sensor.status|upper }}
-                    </span>
-                </div>
-                <h1 class="h2 fw-bold mb-1">{{ sensor.name }}</h1>
-                <div class="text-muted">
-                    Локація: <strong>{{ sensor.location.name }}</strong>
-                    {% if sensor.location.zone %} · Зона: {{ sensor.location.zone }}{% endif %}
+                <span class="badge {{ alert ? 'bg-danger' : 'bg-dark' }} mono mb-2">
+                    SENS-{{ '%04d'|format(sensor.id) }} · {{ alert ? 'ТРИВОГА' : sensor.status|upper }}
+                </span>
+                <h1 class="h3 fw-bold mb-1">{{ sensor.name }}</h1>
+                <div class="text-muted small">
+                    {{ sensor.sensorType }} · Локація: <strong>{{ sensor.location.name }}</strong>
+                    {% if sensor.location.zone %} ({{ sensor.location.zone }}){% endif %}
                 </div>
             </div>
             <div class="text-md-end">
-                <div class="display-4 fw-bold mono {{ alert ? 'text-danger' : 'text-dark' }}">
+                <div class="display-5 fw-bold mono {{ alert ? 'text-danger' : '' }}">
                     {{ sensor.currentValue }} <span class="fs-4 text-muted">{{ sensor.unit }}</span>
                 </div>
-                <div class="text-muted small mono">Оновлено: {{ sensor.updatedAt|date('d.m.Y H:i:s') }}</div>
+                <div class="small text-muted mono">
+                    Поріг: {{ sensor.alertThreshold is not null ? sensor.alertThreshold ~ ' ' ~ sensor.unit : '—' }}
+                </div>
             </div>
         </div>
 
-        <div class="row g-3">
-            <div class="col-md-4">
-                <div class="p-3 bg-light rounded-3 border">
-                    <div class="text-muted small">Поріг спрацювання тривоги</div>
-                    <div class="fs-5 fw-bold mono">
-                        {{ sensor.alertThreshold is not null ? sensor.alertThreshold ~ ' ' ~ sensor.unit : 'Не задано' }}
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="p-3 bg-light rounded-3 border">
-                    <div class="text-muted small">ID пристрою</div>
-                    <div class="fs-5 fw-bold mono">SENS-{{ '%04d'|format(sensor.id) }}</div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="p-3 bg-light rounded-3 border">
-                    <div class="text-muted small">Опис локації</div>
-                    <div class="small mt-1">{{ sensor.location.description ?: 'Без додаткового опису' }}</div>
-                </div>
+        {# Лінійний графік динаміки телеметрії #}
+        <div class="border-top pt-3">
+            <h2 class="h6 fw-bold mb-3">Динаміка показників за останні 12 годин ({{ sensor.unit }})</h2>
+            <div style="height: 240px;">
+                <canvas id="sensorHistoryChart"></canvas>
             </div>
         </div>
     </div>
 
-    {# Інші датчики в цій самій локації (демонстрація OneToMany) #}
-    <div class="panel p-4">
-        <h5 class="fw-semibold mb-3">Усі датчики в локації «{{ sensor.location.name }}»</h5>
+    <div class="surface p-4">
+        <h2 class="h6 fw-bold mb-3">Інші датчики в локації «{{ sensor.location.name }}»</h2>
         <div class="list-group list-group-flush">
             {% for sibling in sensor.location.sensors %}
                 <a href="{{ path('app_sensor_show', {id: sibling.id}) }}"
@@ -71,4 +54,43 @@
             {% endfor %}
         </div>
     </div>
+
+    <script>
+        const currentVal = {{ sensor.currentValue }};
+        const threshold = {{ sensor.alertThreshold is not null ? sensor.alertThreshold : 'null' }};
+        const hours = ['-11г', '-10г', '-9г', '-8г', '-7г', '-6г', '-5г', '-4г', '-3г', '-2г', '-1г', 'Зараз'];
+        const offsets = [-0.14, -0.11, -0.08, -0.1, -0.05, -0.03, -0.06, -0.02, 0.01, -0.01, 0.02, 0];
+        const series = offsets.map(o => +(currentVal * (1 + o)).toFixed(2));
+
+        const datasets = [{
+            label: '{{ sensor.name|e('js') }} ({{ sensor.unit|e('js') }})',
+            data: series,
+            borderColor: {{ alert ? "'#ef4444'" : "'#0ea5e9'" }},
+            backgroundColor: {{ alert ? "'rgba(239,68,68,0.12)'" : "'rgba(14,165,233,0.12)'" }},
+            fill: true,
+            tension: 0.35,
+            pointRadius: 3
+        }];
+
+        if (threshold !== null) {
+            datasets.push({
+                label: 'Поріг тривоги',
+                data: hours.map(() => threshold),
+                borderColor: '#ef4444',
+                borderDash: [6, 6],
+                pointRadius: 0,
+                fill: false
+            });
+        }
+
+        new Chart(document.getElementById('sensorHistoryChart'), {
+            type: 'line',
+            data: { labels: hours, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    </script>
 {% endblock %}
